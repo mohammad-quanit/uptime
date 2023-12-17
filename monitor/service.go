@@ -1,6 +1,8 @@
-package site
+package monitor
 
 import (
+	"fmt"
+
 	"encore.dev/storage/sqldb"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,19 +13,18 @@ type Service struct {
 	db *gorm.DB
 }
 
-var siteDB = sqldb.NewDatabase("site", sqldb.DatabaseConfig{
+var ChecksDB = sqldb.NewDatabase("checks", sqldb.DatabaseConfig{
 	Migrations: "./migrations",
-})
-
-// var siteDB = sqldb.Named("site").Stdlib()
+}).Stdlib()
 
 // initService initializes the site service.
 // It is automatically called by Encore on service startup.
 func initService() (*Service, error) {
 	db, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: siteDB.Stdlib(),
+		Conn: ChecksDB,
 	}))
 	if err != nil {
+		fmt.Println("This is connection error.............", err.Error())
 		return nil, err
 	}
 	return &Service{db: db}, nil
