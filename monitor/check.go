@@ -5,54 +5,102 @@ import (
 	"time"
 
 	"encore.app/site"
+	"encore.dev/cron"
+	"golang.org/x/sync/errgroup"
 )
 
-type Check struct {
+var _ = cron.NewJob("check-all", cron.JobConfig{
+	Title:    "Check all sites",
+	Endpoint: CheckAll,
+	Every:    1 * cron.Hour,
+})
+
+type IDBHandler interface {
+	Create(interface{}) error
+	Find(interface{}) error
+}
+
+func (s *Service) Create(value interface{}) error {
+	return s.db.Create(value).Error
+}
+
+func (s *Service) Find(value interface{}) error {
+	return s.db.Find(value).Error
+}
+
+type SCheck struct {
 	SiteID    int64     `json:"site_id"`
 	Up        bool      `json:"up"`
 	CheckedAt time.Time `json:"checked_at"`
 }
 
-type ListChecked struct {
-	Checked []*Check `json:"checked"`
-}
-
-// Check checks a single site.
-//
-//encore:api public method=POST path=/check/:siteID
-func (s *Service) AddCheck(ctx context.Context, siteID int) error {
-	site, err := site.Get(ctx, siteID)
-	if err != nil {
-		return err
-	}
-
-	response, err := Ping(ctx, site.URL)
-	if err != nil {
-		return err
-	}
-
-	check := Check{
-		SiteID:    int64(site.ID),
-		Up:        response.Up,
-		CheckedAt: time.Now(),
-	}
-
-	if err := s.db.Create(&check).Error; err != nil {
-		return err
-	}
-
-	return nil
+type SListChecked struct {
+	Checked []*SCheck `json:"checked"`
 }
 
 // Get All Checked list.
 //
 //encore:api public method=GET path=/check
-func (s *Service) GetCheck(ctx context.Context) (*ListChecked, error) {
-	var checked []*Check
+func (s *Service) AllCheck(ctx context.Context) (*SListChecked, error) {
+	var checked []*SCheck
 
-	if err := s.db.Find(&checked).Error; err != nil {
+	if err := s.Find(&checked); err != nil {
 		return nil, err
 	}
 
-	return &ListChecked{Checked: checked}, nil
+	return &SListChecked{Checked: checked}, nil
+}
+
+// Check checks a single site.
+//
+//encore:api public method=POST path=/check/:siteID
+func (s *Service) Check(ctx context.Context, siteID int) error {
+	site, err := site.Get(ctx, siteID)
+	if err != nil {
+		return err
+	}
+	dbService := &Service{db: s.db}
+
+	return check(ctx, site, dbService)
+}
+
+// CheckAll checks all sites.
+//
+//encore:api public method=POST path=/checkall
+func (s *Service) CheckAll(ctx context.Context) error {
+	resp, err := site.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Check up to 8 sites concurrently.
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(8)
+	for _, site := range resp.Sites {
+		site := site
+		eg.Go(func() error {
+			return check(ctx, site, &Service{db: s.db})
+		})
+	}
+	return eg.Wait()
+}
+
+// Refactored Function
+func check(ctx context.Context, site *site.Site, s IDBHandler) error {
+	response, err := Ping(ctx, site.URL)
+	if err != nil {
+		return err
+	}
+
+	check := SCheck{
+		SiteID:    int64(site.ID),
+		Up:        response.Up,
+		CheckedAt: time.Now(),
+	}
+
+	if err := s.Create(&check); err != nil {
+		return err
+	}
+
+	return nil
 }
