@@ -7,6 +7,7 @@ import (
 	"encore.app/site"
 	"encore.dev/cron"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 )
 
 var _ = cron.NewJob("check-all", cron.JobConfig{
@@ -28,21 +29,22 @@ func (s *Service) Find(value interface{}) error {
 	return s.db.Find(value).Error
 }
 
-type SCheck struct {
+type Check struct {
+	gorm.Model
 	SiteID    int64     `json:"site_id"`
 	Up        bool      `json:"up"`
 	CheckedAt time.Time `json:"checked_at"`
 }
 
 type SListChecked struct {
-	Checked []*SCheck `json:"checked"`
+	Checked []*Check `json:"checked"`
 }
 
 // Get All Checked list.
 //
 //encore:api public method=GET path=/check
-func (s *Service) AllCheck(ctx context.Context) (*SListChecked, error) {
-	var checked []*SCheck
+func (s *Service) GetChecks(ctx context.Context) (*SListChecked, error) {
+	var checked []*Check
 
 	if err := s.Find(&checked); err != nil {
 		return nil, err
@@ -54,7 +56,7 @@ func (s *Service) AllCheck(ctx context.Context) (*SListChecked, error) {
 // Check checks a single site.
 //
 //encore:api public method=POST path=/check/:siteID
-func (s *Service) Check(ctx context.Context, siteID int) error {
+func (s *Service) AddCheck(ctx context.Context, siteID int) error {
 	site, err := site.Get(ctx, siteID)
 	if err != nil {
 		return err
@@ -92,7 +94,7 @@ func check(ctx context.Context, site *site.Site, s IDBHandler) error {
 		return err
 	}
 
-	check := SCheck{
+	check := Check{
 		SiteID:    int64(site.ID),
 		Up:        response.Up,
 		CheckedAt: time.Now(),
