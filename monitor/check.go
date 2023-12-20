@@ -7,7 +7,6 @@ import (
 	"encore.app/site"
 	"encore.dev/cron"
 	"golang.org/x/sync/errgroup"
-	"gorm.io/gorm"
 )
 
 var _ = cron.NewJob("check-all", cron.JobConfig{
@@ -30,7 +29,6 @@ func (s *Service) Find(value interface{}) error {
 }
 
 type Check struct {
-	gorm.Model
 	SiteID    int64     `json:"site_id"`
 	Up        bool      `json:"up"`
 	CheckedAt time.Time `json:"checked_at"`
